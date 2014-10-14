@@ -16,9 +16,10 @@ type deriver = {
 let registry : (string, deriver) Hashtbl.t
              = Hashtbl.create 16
 
-let register = Hashtbl.add registry
+let register x = Format.eprintf "Register %s@." x; Hashtbl.add registry x
 
 let lookup name =
+  Format.eprintf "Looking up %s@." name;
   try  Some (Hashtbl.find registry name)
   with Not_found -> None
 

@@ -100,3 +100,14 @@ package "fold" (
   archive(native, plugin) = "ppx_deriving_fold.cmxs"
   exists_if = "ppx_deriving_fold.cma"
 )
+
+package "conv" (
+  version = "0.2"
+  description = "[@@deriving Conv]"
+  requires = "ppx_deriving.api"
+  archive(byte) = "ppx_deriving_conv.cma"
+  archive(byte, plugin) = "ppx_deriving_conv.cma"
+  archive(native) = "ppx_deriving_conv.cmxa"
+  archive(native, plugin) = "ppx_deriving_conv.cmxs"
+  exists_if = "ppx_deriving_conv.cma"
+)

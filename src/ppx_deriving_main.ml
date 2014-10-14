@@ -156,6 +156,49 @@ let mapper argv =
       signature { mapper with structure; signature } items)
   }
 
+module Ppxx = struct
+let test mapper name = 
+  try
+    if Filename.check_suffix name ".ml" then (* .mlt ? *)
+      let str = Pparse.parse_implementation ~tool_name:"ppx" Format.err_formatter name in
+      let str = mapper.structure mapper str in
+      Pprintast.structure Format.std_formatter str
+    else if Filename.check_suffix name ".mli" then 
+      let sg = Pparse.parse_interface ~tool_name:"ppx" Format.err_formatter name in
+      let sg = mapper.signature mapper sg in
+      Pprintast.signature Format.std_formatter sg
+    else assert false;
+    Format.fprintf Format.std_formatter "@."
+  with
+  | Syntaxerr.Error e ->
+      Format.eprintf "%a@." Syntaxerr.report_error e
+end
+
+(*
 let () =
   Ast_mapper.register "ppx_deriving" mapper
+*)
+let () = 
+  let debug = ref false in
+  let rev_files = ref [] in 
+  Arg.parse 
+    [ "-debug", Arg.Set debug, "debug mode which can take .ml/.mli then print the result"
+(*
+     "-drop-tests", Arg.Set drop_tests, "Drop unit tests"
+    ; "-top-name", Arg.String (fun s -> top_name := Some (parse_as_lident s)), "Set the top module name" 
+*)
+    ]
+    (fun s -> rev_files := s :: !rev_files) (* will be handled by [Ast_mapper.apply] *)
+    "ppx_deriving";
+  match !debug, List.rev !rev_files with
+  | false, _ ->
+      Ast_mapper.register "ppx_deriving" mapper
+  | true, files ->
+      try
+        List.iter (Ppxx.test (mapper [])) files
+      with
+      | Location.Error e ->
+          Format.eprintf "Error: %a@." Location.report_error e
+
+
 
