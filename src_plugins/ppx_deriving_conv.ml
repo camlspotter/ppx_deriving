@@ -47,9 +47,9 @@ let rec expr_of_typ typ =
               fun [%p ptuple (List.mapi (fun i _ -> pvar (argn i)) typs)] ->
                 E.tuple 
                   [%e 
-                      List.fold_left (fun x xs -> [%expr [%e x] :: [%e xs]]) 
-                      [%expr []]
+                      List.fold_right (fun x xs -> [%expr [%e x] :: [%e xs]]) 
                       args
+                      [%expr []]
                   ]
           ]
 (*
@@ -138,8 +138,7 @@ let sig_of_type ~options ~path type_decl =
 
 let () =
   Ppx_deriving.(register "Conv" {
-    core_type = (fun typ ->
-      [%expr fun x -> Format.asprintf "%a" (fun fmt -> [%e expr_of_typ typ]) x]);
+    core_type = expr_of_typ;
     structure = (fun ~options ~path type_decls ->
       [Str.value Recursive (List.concat (List.map (str_of_type ~options ~path) type_decls))]);
     signature = (fun ~options ~path type_decls ->
