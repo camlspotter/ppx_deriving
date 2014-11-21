@@ -102,6 +102,7 @@ let rec expr_of_typ typ =
       in
       Exp.function_ cases
     | { ptyp_desc = Ptyp_alias (typ, _) } -> expr_of_typ typ
+    | { ptyp_desc = Ptyp_var name } -> [%expr [%e evar ("poly_"^name)]]
     | { ptyp_loc } ->
         raise_errorf ~loc:ptyp_loc "%s cannot be derived for %s"
           deriver (Ppx_deriving.string_of_core_type typ)
@@ -109,7 +110,7 @@ let rec expr_of_typ typ =
 let str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
   parse_options options;
   let path = Ppx_deriving.path_of_type_decl ~path type_decl in
-  let prettyprinter =
+  let conv_of =
     match type_decl.ptype_kind, type_decl.ptype_manifest with
     | Ptype_abstract, Some manifest ->
         [%expr fun fmt -> [%e expr_of_typ manifest]]
@@ -143,15 +144,21 @@ let str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
     | Ptype_open, _        ->
       raise_errorf ~loc "%s cannot be derived for open types" deriver
   in
+(*
   let pp_poly_apply = Ppx_deriving.poly_apply_of_type_decl type_decl (evar
                         (Ppx_deriving.mangle_type_decl (`Prefix "pp") type_decl)) in
+*)
+(*
   let stringprinter = [%expr fun x -> Format.asprintf "%a" [%e pp_poly_apply] x] in
+*)
   let polymorphize  = Ppx_deriving.poly_fun_of_type_decl type_decl in
-  [Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Prefix "pp") type_decl))
-               (polymorphize prettyprinter);
+  [Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Prefix "conv_of_...") type_decl))
+               (polymorphize conv_of);
+(*
    Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Prefix "show") type_decl))
-               (polymorphize stringprinter);]
-
+               (polymorphize stringprinter);
+*)
+  ]
 let sig_of_type ~options ~path type_decl =
   parse_options options;
   (* let typ = Ppx_deriving.core_type_of_type_decl type_decl in *)
