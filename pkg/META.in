@@ -39,6 +39,17 @@ package "show" (
   exists_if = "ppx_deriving_show.cma"
 )
 
+package "conv" (
+  version = "%{version}%"
+  description = "[@@deriving conv]"
+  requires(-ppx_driver) = "ppx_deriving"
+  ppxopt(-ppx_driver) = "ppx_deriving,./ppx_deriving_conv.cma"
+  requires(ppx_driver) = "ppx_deriving.api"
+  archive(ppx_driver, byte) = "ppx_deriving_conv.cma"
+  archive(ppx_driver, native) = "ppx_deriving_conv.cmxa"
+  exists_if = "ppx_deriving_conv.cma"
+)
+
 package "eq" (
   version = "%{version}%"
   description = "[@@deriving eq]"
