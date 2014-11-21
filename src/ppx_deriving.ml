@@ -39,6 +39,12 @@ module Arg = struct
     | { pexp_desc = Pexp_constant (Const_int n) } -> `Ok n
     | _ -> `Error "integer"
 
+  let bool expr =
+    match expr with
+    | [%expr true] -> `Ok true
+    | [%expr false] -> `Ok false
+    | _ -> `Error "boolean"
+
   let string expr =
     match expr with
     | { pexp_desc = Pexp_constant (Const_string (n, None)) } -> `Ok n
@@ -51,17 +57,29 @@ module Arg = struct
     | _ -> `Error (Printf.sprintf "one of: %s"
                     (String.concat ", " (List.map (fun s -> "`"^s) values)))
 
-  let payload ~name conv attr =
+  let get_attr ~deriver conv attr =
     match attr with
     | None -> None
-    | Some ({ txt = attr_name }, PStr [{ pstr_desc = Pstr_eval (expr, []) }]) ->
+    | Some ({ txt = name }, PStr [{ pstr_desc = Pstr_eval (expr, []) }]) ->
       begin match conv expr with
       | `Ok v -> Some v
       | `Error desc ->
-        raise_errorf ~loc:expr.pexp_loc "%s: invalid [@%s]: %s expected" name attr_name desc
+        raise_errorf ~loc:expr.pexp_loc "%s: invalid [@%s]: %s expected" deriver name desc
       end
-    | Some ({ txt = attr_name; loc }, _) ->
-      raise_errorf ~loc "%s: invalid [@%s]: value expected" name attr_name
+    | Some ({ txt = name; loc }, _) ->
+      raise_errorf ~loc "%s: invalid [@%s]: value expected" deriver name
+
+  let get_flag ~deriver attr =
+    match attr with
+    | None -> false
+    | Some ({ txt = name }, PStr []) -> true
+    | Some ({ txt = name; loc }, _) ->
+      raise_errorf ~loc "%s: invalid [@%s]: empty structure expected" deriver name
+
+  let get_expr ~deriver conv expr =
+    match conv expr with
+    | `Error desc -> raise_errorf ~loc:expr.pexp_loc "%s: %s expected" deriver desc
+    | `Ok v -> v
 end
 
 let expand_path ~path ident =
@@ -92,7 +110,7 @@ let mangle_lid ?fixpoint affix lid =
   | Ldot (p, s) -> Ldot (p, mangle ?fixpoint affix s)
   | Lapply _    -> assert false
 
-let attr ~prefix name attrs =
+let attr ~deriver name attrs =
   let starts str prefix =
     String.length str >= String.length prefix &&
       String.sub str 0 (String.length prefix) = prefix
@@ -103,8 +121,8 @@ let attr ~prefix name attrs =
     else f ()
   in
   let name =
-    try_prefix ("deriving."^prefix^".") (fun () ->
-      try_prefix (prefix^".") (fun () ->
+    try_prefix ("deriving."^deriver^".") (fun () ->
+      try_prefix (deriver^".") (fun () ->
         name))
   in
   try Some (List.find (fun ({ txt }, _) -> txt = name) attrs)

@@ -1,4 +1,6 @@
 opam-version: "1.2"
+name: "ppx_deriving"
+version: "1.1"
 maintainer: "Peter Zotov <whitequark@whitequark.org>"
 authors: [ "Peter Zotov <whitequark@whitequark.org>" ]
 license: "MIT"
@@ -7,6 +9,7 @@ doc: "http://whitequark.github.io/ppx_deriving"
 bug-reports: "https://github.com/whitequark/ppx_deriving/issues"
 dev-repo: "git://github.com/whitequark/ppx_deriving.git"
 tags: [ "syntax" ]
+substs: [ "pkg/META" ]
 build: [
   # If there is no native dynlink, we can't use native builds
   "ocaml" "pkg/build.ml" "native=%{ocaml-native-dynlink}%"
@@ -19,8 +22,8 @@ build-doc: [
   make "doc"
 ]
 depends: [
-  "ocamlfind" {>= "1.5.4"}
-  "ppx_tools" {>= "0.99"}
+  "ppx_tools" {>= "0.99.2"}
+  "ocamlfind" {build & >= "1.5.4"}
   "ounit"     {test}
 ]
-available: [ocaml-version >= "4.02.1"]
+available: [ ocaml-version >= "4.02.1" ]

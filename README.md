@@ -21,6 +21,17 @@ _deriving_ can be installed via [OPAM](https://opam.ocaml.org):
 
     opam install ppx_deriving
 
+Buildsystem integration
+-----------------------
+
+To use _deriving_, only one modification is needed: you need to require via ocamlfind the package corresponding to the _deriving_ plugin. This will both engage the syntax extension and link in the runtime components of the _deriving_ plugin, if any.
+
+For example, if you are using ocamlbuild, add the following to `_tags` to use the default _deriving_ plugins:
+
+    <src/*>: package(ppx_deriving.std)
+
+If you are using another buildsystem, just make sure it passes `-package ppx_deriving_whatever` to ocamlfind.
+
 Usage
 -----
 
@@ -31,8 +42,6 @@ type point2d = float * float
 [@@deriving show]
 ```
 
-For every plugin, you need to require the corresponding package, e.g. `ppx_deriving.show` for the `show` deriver. The package `ppx_deriving.std` depends on every standard deriver.
-
 It's possible to invoke several plugins by separating their names with commas:
 
 ``` ocaml
@@ -40,14 +49,14 @@ type point3d = float * float * float
 [@@deriving show, eq]
 ```
 
-It's possible to pass options to a plugin by appending a record to plugin's name (TBD):
+It's possible to pass options to a plugin by appending a record to plugin's name:
 
 ``` ocaml
 type t = string
 [@@deriving ord { affix = true }]
 ```
 
-It's possible to make _deriving_ ignore a missing plugin rather than raising an error by passing an `optional = true` option (TBD), for example, to enable conditional compilation:
+It's possible to make _deriving_ ignore a missing plugin rather than raising an error by passing an `optional = true` option, for example, to enable conditional compilation:
 
 ``` ocaml
 type addr = string * int
@@ -106,7 +115,7 @@ It is expected that all _deriving_ plugins will follow the same conventions, thu
 
   * There may be additional attributes attached to the AST. In case of a plugin named `eq` and attributes named `compare` and `skip`, the plugin must recognize all of `compare`, `skip`, `eq.compare`, `eq.skip`, `deriving.eq.compare` and `deriving.eq.skip` annotations. However, if it detects that at least one namespaced (e.g. `eq.compare` or `deriving.eq.compare`) attribute is present, it must not look at any attributes located within a different namespace. As a result, different ppx rewriters can avoid interference even if the attribute names they use overlap.
 
-  * A typical plugin should handle tuples, records, normal and polymorphic variants; builtin types: `int`, `int32`, `int64`, `nativeint`, `float`, `bool`, `char`, `string`, `bytes`, `ref`, `list`, `array`, `option` and their `Mod.t` aliases; and abstract types. For builtin types, it should have customizable, sensible default behavior. For abstract types, it should expect to find the functions it would derive itself for that type.
+  * A typical plugin should handle tuples, records, normal and polymorphic variants; builtin types: `int`, `int32`, `int64`, `nativeint`, `float`, `bool`, `char`, `string`, `bytes`, `ref`, `list`, `array`, `option` and their `Mod.t` aliases; abstract types; and `_`. For builtin types, it should have customizable, sensible default behavior. For abstract types, it should expect to find the functions it would derive itself for that type.
 
   * If a type is parametric, the generated functions accept an argument for every type variable before all other arguments.
 
@@ -280,7 +289,7 @@ _deriving_ is a thin wrapper over the ppx rewriter system. Indeed, it includes v
 As such, _deriving_:
 
   * Completely defines the syntax of `[@@deriving]` annotation and unifies the plugin discovery mechanism;
-  * Provides an unified, strict option parsing API to plugins (TBD);
+  * Provides an unified, strict option parsing API to plugins;
   * Provides helpers for parsing annotations to ensure that the plugins interoperate with each other and the rest of the ecosystem.
 
 ### Using the API
@@ -298,7 +307,7 @@ The following is a list of tips for developers trying to use the ppx interface:
   * Need to handle polymorphism? Use [Ppx_deriving.poly_fun_of_type_decl](http://whitequark.github.io/ppx_deriving/Ppx_deriving.html#VALpoly_fun_of_type_decl) for derived functions, [Ppx_deriving.poly_arrow_of_type_decl](http://whitequark.github.io/ppx_deriving/Ppx_deriving.html#VALpoly_arrow_of_type_decl) for signatures, and [Ppx_deriving.poly_apply_of_type_decl](http://whitequark.github.io/ppx_deriving/Ppx_deriving.html#VALpoly_apply_of_type_decl) for "forwarding" the arguments corresponding to type variables to another generated function.
   * Need to display a full path to a type, e.g. for an error message? Use [Ppx_deriving.path_of_type_decl](http://whitequark.github.io/ppx_deriving/Ppx_deriving.html#VALpath_of_type_decl).
   * Need to apply a sequence or a binary operator to variant, tuple or record elements? Use [Ppx_deriving.fold_exprs](http://whitequark.github.io/ppx_deriving/Ppx_deriving.html#VALfold_exprs).
-  * Don't forget to invoke the option parser (TBD) even if you don't have any options. This way, it would display an error to the user if they pass any option.
+  * Don't forget to display an error message if your plugin doesn't parse any options.
 
 License
 -------

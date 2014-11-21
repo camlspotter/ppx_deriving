@@ -5,21 +5,33 @@ open Parsetree
 open Ast_helper
 open Ast_convenience
 
-let prefix = "show"
+let deriver = "show"
 let raise_errorf = Ppx_deriving.raise_errorf
+
+let parse_options options =
+  options |> List.iter (fun (name, expr) ->
+    match name with
+    | _ -> raise_errorf ~loc:expr.pexp_loc "%s does not support option %s" deriver name)
+
+let attr_printer attrs =
+  Ppx_deriving.(attrs |> attr ~deriver "printer" |> Arg.(get_attr ~deriver expr))
+
+let attr_polyprinter attrs =
+  Ppx_deriving.(attrs |> attr ~deriver "polyprinter" |> Arg.(get_attr ~deriver expr))
+
+let attr_opaque attrs =
+  Ppx_deriving.(attrs |> attr ~deriver "opaque" |> Arg.get_flag ~deriver)
 
 let argn = Printf.sprintf "a%d"
 
 let rec expr_of_typ typ =
-  match Ppx_deriving.attr ~prefix "printer" typ.ptyp_attributes with
-  | Some (_, PStr [{ pstr_desc = Pstr_eval (printer, _) }]) ->
+  match attr_printer typ.ptyp_attributes with
+  | Some printer ->
     [%expr (let fprintf = Format.fprintf in [%e printer]) fmt [@ocaml.warning "-26"]]
-  | Some ({ loc }, _) -> raise_errorf ~loc "Invalid [@deriving.%s.printer] syntax" prefix
   | None ->
-  match Ppx_deriving.attr ~prefix "opaque" typ.ptyp_attributes with
-  | Some (_, PStr []) -> [%expr fun _ -> Format.pp_print_string fmt "<opaque>"]
-  | Some ({ loc }, _) -> raise_errorf ~loc "Invalid [@deriving.%s.opaque] syntax" prefix
-  | None ->
+  if attr_opaque typ.ptyp_attributes then
+    [%expr fun _ -> Format.pp_print_string fmt "<opaque>"]
+  else
     let format x = [%expr Format.fprintf fmt [%e str x]] in
     let seq start finish fold typ =
       [%expr fun x ->
@@ -30,6 +42,7 @@ let rec expr_of_typ typ =
         Format.fprintf fmt [%e str finish];]
     in
     match typ with
+    | [%type: _]      -> [%expr fun _ -> Format.pp_print_string fmt "_"]
     | [%type: int]    -> format "%d"
     | [%type: int32]     | [%type: Int32.t] -> format "%ldl"
     | [%type: int64]     | [%type: Int64.t] -> format "%LdL"
@@ -51,18 +64,17 @@ let rec expr_of_typ typ =
         function
         | None -> Format.pp_print_string fmt "None"
         | Some x ->
-          Format.pp_print_string fmt "Some (";
+          Format.pp_print_string fmt "(Some ";
           [%e expr_of_typ typ] x;
           Format.pp_print_string fmt ")"]
     | { ptyp_desc = Ptyp_arrow _ } ->
       [%expr fun _ -> Format.pp_print_string fmt "<fun>"]
     | { ptyp_desc = Ptyp_constr ({ txt = lid }, args) } ->
       let args_pp = List.map (fun typ -> [%expr fun fmt -> [%e expr_of_typ typ]]) args in
-      begin match Ppx_deriving.attr ~prefix "polyprinter" typ.ptyp_attributes with
-      | Some (_, PStr [{ pstr_desc = Pstr_eval (printer, _) }]) ->
+      begin match attr_polyprinter typ.ptyp_attributes with
+      | Some printer ->
         app [%expr (let fprintf = Format.fprintf in [%e printer]) [@ocaml.warning "-26"]]
             (args_pp @ [[%expr fmt]])
-      | Some ({ loc }, _) -> raise_errorf ~loc "Invalid [@deriving.%s.polyprinter] syntax" prefix
       | None ->
         app (Exp.ident (mknoloc (Ppx_deriving.mangle_lid (`Prefix "pp") lid)))
             (args_pp @ [[%expr fmt]])
@@ -91,17 +103,18 @@ let rec expr_of_typ typ =
             Exp.case [%pat? [%p Pat.type_ tname] as x]
                      [%expr [%e expr_of_typ typ] x]
           | _ ->
-            raise_errorf ~loc:ptyp_loc "Cannot derive show for %s"
-                         (Ppx_deriving.string_of_core_type typ))
+            raise_errorf ~loc:ptyp_loc "%s cannot be derived for %s"
+                         deriver (Ppx_deriving.string_of_core_type typ))
       in
       Exp.function_ cases
     | { ptyp_desc = Ptyp_var name } -> [%expr [%e evar ("poly_"^name)] fmt]
     | { ptyp_desc = Ptyp_alias (typ, _) } -> expr_of_typ typ
     | { ptyp_loc } ->
-      raise_errorf ~loc:ptyp_loc "Cannot derive show for %s"
-                   (Ppx_deriving.string_of_core_type typ)
+      raise_errorf ~loc:ptyp_loc "%s cannot be derived for %s"
+                   deriver (Ppx_deriving.string_of_core_type typ)
 
 let str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
+  parse_options options;
   let path = Ppx_deriving.path_of_type_decl ~path type_decl in
   let prettyprinter =
     match type_decl.ptype_kind, type_decl.ptype_manifest with
@@ -115,8 +128,13 @@ let str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
           let result =
             match args with
             | []   -> [%expr Format.pp_print_string fmt [%e str constr_name]]
+            | [arg] ->
+              [%expr
+                Format.fprintf fmt [%e str ("(@[<hov2>" ^  constr_name ^ "@ ")];
+                [%e arg];
+                Format.fprintf fmt "@])"]
             | args ->
-              [%expr Format.fprintf fmt [%e str (constr_name ^ " (@[<hov>")];
+              [%expr Format.fprintf fmt [%e str ("@[<hov2>" ^  constr_name ^ " (@,")];
               [%e args |> Ppx_deriving.(fold_exprs
                     (seq_reduce ~sep:[%expr Format.fprintf fmt ",@ "]))];
               Format.fprintf fmt "@])"]
@@ -136,8 +154,10 @@ let str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
         [%e fields |> Ppx_deriving.(fold_exprs
               (seq_reduce ~sep:[%expr Format.fprintf fmt ";@ "]))];
         Format.fprintf fmt "@] }"]
-    | Ptype_abstract, None -> raise_errorf ~loc "Cannot derive show for fully abstract type"
-    | Ptype_open, _        -> raise_errorf ~loc "Cannot derive show for open type"
+    | Ptype_abstract, None ->
+      raise_errorf ~loc "%s cannot be derived for fully abstract types" deriver
+    | Ptype_open, _        ->
+      raise_errorf ~loc "%s cannot be derived for open types" deriver
   in
   let pp_poly_apply = Ppx_deriving.poly_apply_of_type_decl type_decl (evar
                         (Ppx_deriving.mangle_type_decl (`Prefix "pp") type_decl)) in
@@ -149,6 +169,7 @@ let str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
                (polymorphize stringprinter);]
 
 let sig_of_type ~options ~path type_decl =
+  parse_options options;
   let typ = Ppx_deriving.core_type_of_type_decl type_decl in
   let polymorphize = Ppx_deriving.poly_arrow_of_type_decl
         (fun var -> [%type: Format.formatter -> [%t var] -> unit]) type_decl in
@@ -158,7 +179,7 @@ let sig_of_type ~options ~path type_decl =
               (polymorphize [%type: [%t typ] -> string]))]
 
 let () =
-  Ppx_deriving.(register "show" {
+  Ppx_deriving.(register deriver {
     core_type = Some (fun typ ->
       [%expr fun x -> Format.asprintf "%a" (fun fmt -> [%e expr_of_typ typ]) x]);
     structure = (fun ~options ~path type_decls ->
