@@ -128,7 +128,7 @@ let attr ~deriver name attrs =
   try Some (List.find (fun ({ txt }, _) -> txt = name) attrs)
   with Not_found -> None
 
-let fold_type_decl fn accum { ptype_params }=
+let fold_left_type_decl fn accum { ptype_params }=
   List.fold_left (fun accum (param, _) ->
       match param with
       | { ptyp_desc = Ptyp_any } -> accum
@@ -136,6 +136,17 @@ let fold_type_decl fn accum { ptype_params }=
         fn accum name
       | _ -> assert false)
     accum ptype_params
+
+let fold_right_type_decl fn { ptype_params } accum =
+  List.fold_right (fun (param, _) accum ->
+      match param with
+      | { ptyp_desc = Ptyp_any } -> accum
+      | { ptyp_desc = Ptyp_var name } ->
+        fn name accum
+      | _ -> assert false)
+    ptype_params accum
+
+let fold_type_decl = fold_left_type_decl
 
 let free_vars_in_core_type typ =
   let rec free_in typ =
@@ -173,22 +184,25 @@ let fresh_var bound =
   loop 0
 
 let poly_fun_of_type_decl type_decl expr =
-  fold_type_decl (fun expr name -> Exp.fun_ "" None (pvar ("poly_"^name)) expr) expr type_decl
+  fold_right_type_decl (fun name expr -> Exp.fun_ "" None (pvar ("poly_"^name)) expr) type_decl expr
 
 let poly_apply_of_type_decl type_decl expr =
-  fold_type_decl (fun expr name -> Exp.apply expr ["", evar ("poly_"^name)]) expr type_decl
+  fold_left_type_decl (fun expr name -> Exp.apply expr ["", evar ("poly_"^name)]) expr type_decl
 
 let poly_arrow_of_type_decl fn type_decl typ =
-  fold_type_decl (fun typ name -> Typ.arrow "" (fn (Typ.var name)) typ) typ type_decl
+  fold_right_type_decl (fun name typ -> Typ.arrow "" (fn (Typ.var name)) typ) type_decl typ
 
 let core_type_of_type_decl { ptype_name = { txt = name }; ptype_params } =
   Typ.constr (mknoloc (Lident name)) (List.map fst ptype_params)
 
 let fold_exprs ?unit fn exprs =
   match exprs with
-  | [] -> (match unit with Some x -> x | None -> assert false)
   | [a] -> a
   | hd::tl -> List.fold_left fn hd tl
+  | [] ->
+    match unit with
+    | Some x -> x
+    | None -> raise (Invalid_argument "Ppx_deriving.fold_exprs")
 
 let seq_reduce ?sep a b =
   match sep with
