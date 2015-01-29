@@ -35,6 +35,6 @@ ocamlfind install ppx_deriving $INSTALL_TARGETS
 
 # We need to rename ppx_deriving_main.native
 
-DIR=`ocamlfind query ppx_deriving`
+DIR=`ocamlfind query ppx_deriving | sed -e 's/\r//g'`
 echo $DIR
 mv $DIR/ppx_deriving_main.native $DIR/ppx_deriving
