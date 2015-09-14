@@ -41,6 +41,7 @@ let test_complex ctxt =
   assert_equal ~printer (-1) (compare_ty (0, "a") (0, "b"));
   assert_equal ~printer (1)  (compare_ty (0, "b") (0, "a"))
 
+
 type re = {
   f1 : int;
   f2 : string;
@@ -69,10 +70,72 @@ type 'a pt = { v : 'a } [@@deriving ord]
 let test_placeholder ctxt =
   assert_equal ~printer 0 ([%ord: _] 1 2)
 
+type mrec_variant =
+  | MrecFoo of string
+  | MrecBar of int
+
+and mrec_variant_list = mrec_variant list
+[@@deriving ord]
+
+let test_mrec ctxt =
+  assert_equal ~printer (0)   (compare_mrec_variant_list [MrecFoo "foo"; MrecBar 1;]
+                                                         [MrecFoo "foo"; MrecBar 1;]);
+  assert_equal ~printer (-1)  (compare_mrec_variant_list [MrecFoo "foo"; MrecBar 1;]
+                                                         [MrecFoo "foo"; MrecBar 2;]);
+  assert_equal ~printer (1)   (compare_mrec_variant_list [MrecFoo "foo"; MrecBar 2;]
+                                                         [MrecFoo "foo"; MrecBar 1;])
+
+
+type e = Bool of be | Plus of e * e | IfE  of (be, e) if_e
+and be = True | False | And of be * be | IfB of (be, be) if_e
+and ('cond, 'a) if_e = 'cond * 'a * 'a
+  [@@deriving ord]
+
+let test_mutualy_recursive ctxt =
+  let ce1 = Bool (IfB (True, False, True)) in
+  let ce2 = Bool (IfB (True, False, False)) in
+  assert_equal ~printer (0) (compare_e ce1 ce1);
+  assert_equal ~printer (-1) (compare_e ce1 ce2);
+  assert_equal ~printer (1) (compare_e ce2 ce1)
+
+type es =
+  | ESBool of bool
+  | ESString of string
+and bool =
+  | Bfoo of int * ((int -> int) [@compare fun _ _ -> 0])
+and string =
+  | Sfoo of String.t * ((int -> int) [@compare fun _ _ -> 0])
+  [@@deriving ord{ allow_std_type_shadowing }]
+
+let test_shadowed_std_type ctxt =
+  let e1 = ESBool (Bfoo (1, (+) 1)) in
+  let e2 = ESString (Sfoo ("lalala", (+) 3)) in
+  assert_equal ~printer (-1) (compare_es e1 e2);
+  assert_equal ~printer (1) (compare_es e2 e1);
+  assert_equal ~printer 0 (compare_es e1 e1);
+  assert_equal ~printer 0 (compare_es e2 e2)
+
+module Warnings = struct
+  module W4 = struct
+    (* Module does not compile if warning 4 is triggered by the ord
+       deriver. *)
+
+    [@@@ocaml.warning "@4"]
+
+    type t =
+      | A of int
+      | B
+          [@@deriving ord]
+  end
+end
+
 let suite = "Test deriving(ord)" >::: [
     "test_simple"       >:: test_simple;
     "test_variant"      >:: test_variant;
     "test_complex"      >:: test_complex;
     "test_custom"       >:: test_custom;
     "test_placeholder"  >:: test_placeholder;
+    "test_mrec"         >:: test_mrec;
+    "test_mutualy_recursive" >:: test_mutualy_recursive;
+    "test_shadowed_std_type" >:: test_shadowed_std_type;
   ]

@@ -2,6 +2,8 @@
 
 open Parsetree
 
+module StringSet : Set.S with type elt = string
+
 (** {2 Registration} *)
 
 (** A type of deriving plugins.
@@ -18,15 +20,34 @@ open Parsetree
     annotations. If this function is missing, the corresponding [[%foo:]]
     annotation is ignored. *)
 type deriver = {
+  name : string ;
   core_type : (core_type -> expression) option;
-  structure : options:(string * expression) list -> path:string list ->
-              type_declaration list -> structure;
-  signature : options:(string * expression) list -> path:string list ->
-              type_declaration list -> signature;
+  type_decl_str : options:(string * expression) list -> path:string list ->
+                   type_declaration list -> structure;
+  type_ext_str : options:(string * expression) list -> path:string list ->
+                   type_extension -> structure;
+  type_decl_sig : options:(string * expression) list -> path:string list ->
+                   type_declaration list -> signature;
+  type_ext_sig : options:(string * expression) list -> path:string list ->
+                  type_extension -> signature;
 }
 
-(** [register name deriver] registers [deriver] as [name]. *)
-val register : string -> deriver -> unit
+(** [register deriver] registers [deriver] according to its [name] field. *)
+val register : deriver -> unit
+
+(** Creating {!deriver} structure. *)
+val create :
+  string ->
+  ?core_type: (core_type -> expression) ->
+  ?type_ext_str: (options:(string * expression) list -> path:string list ->
+                   type_extension -> structure) ->
+  ?type_ext_sig: (options:(string * expression) list -> path:string list ->
+                   type_extension -> signature) ->
+  ?type_decl_str: (options:(string * expression) list -> path:string list ->
+                    type_declaration list -> structure) ->
+  ?type_decl_sig: (options:(string * expression) list -> path:string list ->
+                    type_declaration list -> signature) ->
+  unit -> deriver
 
 (** [lookup name] looks up a deriver called [name]. *)
 val lookup : string -> deriver option
@@ -120,20 +141,26 @@ val path_of_type_decl : path:string list -> type_declaration -> string list
 
 (** [mangle_type_decl ~fixpoint affix type_] derives a function name from [type_] name
     by doing nothing if [type_] is named [fixpoint] (["t"] by default), or
-    appending or prepending [affix] via an underscore. *)
-val mangle_type_decl : ?fixpoint:string -> [ `Prefix of string | `Suffix of string ] ->
-                       type_declaration -> string
+    appending and/or prepending [affix] via an underscore. *)
+val mangle_type_decl :
+   ?fixpoint:string ->
+   [ `Prefix of string | `Suffix of string | `PrefixSuffix of string * string ] ->
+   type_declaration -> string
 
 (** [mangle_lid ~fixpoint affix lid] does the same as {!mangle_type_decl}, but for
     the last component of [lid]. *)
-val mangle_lid : ?fixpoint:string -> [ `Prefix of string | `Suffix of string ] ->
-                 Longident.t -> Longident.t
+val mangle_lid : ?fixpoint:string ->
+   [ `Prefix of string | `Suffix of string | `PrefixSuffix of string * string] ->
+   Longident.t -> Longident.t
 
 (** [attr ~deriver name attrs] searches for an attribute [\[\@deriving.deriver.attr\]]
     in [attrs] if any attribute with name starting with [\@deriving.deriver] exists,
     or [\[\@deriver.attr\]] if any attribute with name starting with [\@deriver] exists,
     or [\[\@attr\]] otherwise. *)
 val attr : deriver:string -> string -> attributes -> attribute option
+
+(** [attr_warning expr] builds the attribute [\@ocaml.warning expr] *)
+val attr_warning: expression -> attribute
 
 (** [free_vars_in_core_type typ] returns unique free variables in [typ] in
     lexical order. *)
@@ -151,9 +178,13 @@ val fold_left_type_decl : ('a -> string -> 'a) -> 'a -> type_declaration -> 'a
     (i.e. not wildcard) parameters in [type_]. *)
 val fold_right_type_decl : (string -> 'a -> 'a) -> type_declaration -> 'a -> 'a
 
-(** [fold_type_decl] is a deprecated alias to [fold_left_type_decl]. *)
-val fold_type_decl : ('a -> string -> 'a) -> 'a -> type_declaration -> 'a
-[@@ocaml.deprecated "Use fold_left_type_decl"]
+(** [fold_left_type_ext fn accum type_] performs a left fold over all type variable (i.e. not
+    wildcard) parameters in [type_]. *)
+val fold_left_type_ext : ('a -> string -> 'a) -> 'a -> type_extension -> 'a
+
+(** [fold_right_type_ext fn accum type_] performs a right fold over all type variable (i.e. not
+    wildcard) parameters in [type_]. *)
+val fold_right_type_ext : (string -> 'a -> 'a) -> type_extension -> 'a -> 'a
 
 (** [poly_fun_of_type_decl type_ expr] wraps [expr] into [fun poly_N -> ...] for every
     type parameter ['N] present in [type_]. For example, if [type_] refers to
@@ -162,12 +193,18 @@ val fold_type_decl : ('a -> string -> 'a) -> 'a -> type_declaration -> 'a
     [_] parameters are ignored.  *)
 val poly_fun_of_type_decl : type_declaration -> expression -> expression
 
+(** Same as {!poly_fun_of_type_decl} but for type extension. *)
+val poly_fun_of_type_ext : type_extension -> expression -> expression
+
 (** [poly_apply_of_type_decl type_ expr] wraps [expr] into [expr poly_N] for every
     type parameter ['N] present in [type_]. For example, if [type_] refers to
     [type ('a, 'b) map], [expr] will be wrapped into [[%e expr] poly_a poly_b].
 
     [_] parameters are ignored. *)
 val poly_apply_of_type_decl : type_declaration -> expression -> expression
+
+(** Same as {!poly_apply_of_type_decl} but for type extension. *)
+val poly_apply_of_type_ext : type_extension -> expression -> expression
 
 (** [poly_arrow_of_type_decl fn type_ typ] wraps [typ] in an arrow with [fn [%type: 'N]]
     as argument for every type parameter ['N] present in [type_]. For example, if
@@ -178,9 +215,16 @@ val poly_apply_of_type_decl : type_declaration -> expression -> expression
 val poly_arrow_of_type_decl : (core_type -> core_type) ->
                               type_declaration -> core_type -> core_type
 
+(** Same as {!poly_arrow_of_type_decl} but for type extension. *)
+val poly_arrow_of_type_ext : (core_type -> core_type) ->
+                              type_extension -> core_type -> core_type
+
 (** [core_type_of_type_decl type_] constructs type [('a, 'b, ...) t] for
     type declaration [type ('a, 'b, ...) t = ...]. *)
 val core_type_of_type_decl : type_declaration -> core_type
+
+(** Same as {!core_type_of_type_decl} but for type extension. *)
+val core_type_of_type_ext : type_extension -> core_type
 
 (** [fold_exprs ~unit fn exprs] folds [exprs] using head of [exprs] as initial
     accumulator value, or [unit] if [exprs = []].
@@ -197,3 +241,18 @@ val seq_reduce : ?sep:expression -> expression -> expression -> expression
 
 (** [binop_reduce] ≡ [fun x a b -> [%expr [%e x] [%e a] [%e b]]]. *)
 val binop_reduce : expression -> expression -> expression -> expression
+
+(** [strong_type_of_type ty] transform a type ty to
+    [freevars . ty], giving a strong polymorphic type *)
+val strong_type_of_type: core_type -> core_type
+
+(** [extract_typename_of_type_group ~allow_shadowing tys] will extract
+    the set of all types in a type group. Will raise an error in case
+    of type shadowing standard types, unless [~allow_shadowing] is set
+    to true. *)
+val extract_typename_of_type_group : string -> allow_shadowing:bool ->
+                                     type_declaration list -> StringSet.t
+
+val mapper : Ast_mapper.mapper
+(** The mapper for the currently loaded deriving plugins. It is useful for
+    recursively processing expression-valued attributes. *)

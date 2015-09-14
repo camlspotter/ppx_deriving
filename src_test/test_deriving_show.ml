@@ -65,6 +65,7 @@ let test_record ctxt =
   assert_equal ~printer "{ Test_deriving_show.f1 = 1; f2 = \"foo\"; f3 = <opaque> }"
                         (show_re { f1 = 1; f2 = "foo"; f3 = 1.0 })
 
+
 module M : sig
   type t = A [@@deriving show]
 end = struct
@@ -123,6 +124,35 @@ end = struct
   type ('b,'a) t = 'b * 'a [@@deriving show]
 end
 
+
+type foo = F of int | B of int bar | C of float bar
+and 'a bar = { x : 'a ; r : foo } 
+  [@@deriving show]
+
+
+let test_mut_rec ctxt =
+  let e1 =  B { x = 12; r = F 16 } in
+  assert_equal ~printer "(Test_deriving_show.B\n   { Test_deriving_show.x = 12; r = (Test_deriving_show.F 16) })" (show_foo e1)
+
+type es =
+  | ESBool of bool
+  | ESString of string
+and bool =
+  | Bfoo of int * (int -> int)
+and string =
+  | Sfoo of String.t * (int -> int)
+  [@@deriving show{ allow_std_type_shadowing }]
+
+let test_shadowed_std_type ctxt =
+  let e1 = ESBool (Bfoo (1, (+) 1)) in
+  let e2 = ESString (Sfoo ("lalala", (+) 3)) in
+  assert_equal ~printer
+    "(Test_deriving_show.ESBool Test_deriving_show.Bfoo (1, <fun>))"
+    (show_es e1);
+  assert_equal ~printer
+    "(Test_deriving_show.ESString Test_deriving_show.Sfoo (\"lalala\", <fun>))"
+    (show_es e2)
+
 let suite = "Test deriving(show)" >::: [
     "test_alias"        >:: test_alias;
     "test_variant"      >:: test_variant;
@@ -137,4 +167,6 @@ let suite = "Test deriving(show)" >::: [
     "test_alias_path"   >:: test_alias_path;
     "test_polypr"       >:: test_polypr;
     "test_placeholder"  >:: test_placeholder;
+    "test_mut_rec"      >:: test_mut_rec;
+    "test_shadowed_std_type" >:: test_shadowed_std_type;
   ]

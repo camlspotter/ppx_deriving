@@ -156,7 +156,7 @@ The function `fprintf` is locally defined in the printer.
 Plugins: eq and ord
 -------------------
 
-_eq_ derives a function comparing values by semantic equality; structural or physical depending on context. _ord_ derives a function defining a total order for values, returning `-1`, `0` or `1`. They're similar to `Pervasives.(=)` and `Pervasives.compare`, but are faster, allow to customize the comparison rules, and never raise at runtime. _eq_ and _ord_ are short-circuiting.
+_eq_ derives a function comparing values by semantic equality; structural or physical depending on context. _ord_ derives a function defining a total order for values, returning a negative value if lower, `0` if equal or a positive value is greater. They're similar to `Pervasives.(=)` and `Pervasives.compare`, but are faster, allow to customize the comparison rules, and never raise at runtime. _eq_ and _ord_ are short-circuiting.
 
 ``` ocaml
 # type t = [ `A | `B of int ] [@@deriving eq, ord];;
@@ -181,7 +181,7 @@ _eq_ and _ord_ allow to specify custom comparison functions for types to overrid
 # type file = {
   name : string [@equal fun a b -> String.(lowercase a = lowercase b)];
   perm : int    [@compare fun a b -> compare b a]
-} [@@deriving eq, Ord];;
+} [@@deriving eq, ord];;
 type file = { name : bytes; perm : int; }
 val equal_file : file -> file -> bool = <fun>
 val compare_file : file -> file -> int = <fun>
@@ -247,7 +247,7 @@ type record = {
   def  : int [@default 42];
   args : (int * int list) [@split];
   norm : int;
-} [@@deriving create]
+} [@@deriving create] ;;
 val create_record :
   ?opt:int ->
   ?lst:int list ->
